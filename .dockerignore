@@ -1,0 +1,10 @@
+.git
+.gitignore
+.claude
+deploy/
+tests/
+*.md
+scripts/
+requirements-dev.txt
+**/__pycache__
+**/node_modules

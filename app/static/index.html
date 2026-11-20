@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ingress Query</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --fg: #1d2330; --muted: #657084; --border: #dfe3ea;
+    --accent: #2f6fde; --accent-bg: #e8f0fd; --ok: #1e8a4c; --ok-bg: #e4f5ea;
+    --warn: #a86a00; --warn-bg: #fff3d6; --err: #c23434; --err-bg: #fde8e8;
+    --code-bg: #f0f2f5; --row-hover: #f3f6fb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --panel: #1a1e26; --fg: #e3e7ee; --muted: #8d97a8; --border: #2c323e;
+      --accent: #6b9cf5; --accent-bg: #1e2a40; --ok: #5cc98a; --ok-bg: #173022;
+      --warn: #e5b04a; --warn-bg: #352a12; --err: #f07575; --err-bg: #3a1a1a;
+      --code-bg: #232833; --row-hover: #20252f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+  header { background: var(--panel); border-bottom: 1px solid var(--border); padding: 12px 20px;
+    display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 5; }
+  header h1 { font-size: 17px; margin: 0; font-weight: 600; }
+  header h1 a { color: var(--fg); }
+  header .spacer { flex: 1; }
+  main { max-width: 1400px; margin: 0 auto; padding: 18px 20px 40px; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+  input[type=search], select { background: var(--panel); color: var(--fg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 7px 10px; font: inherit; }
+  input[type=search] { flex: 1 1 280px; max-width: 460px; }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  button { background: var(--panel); color: var(--fg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 7px 12px; font: inherit; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  .muted { color: var(--muted); }
+  .count { color: var(--muted); font-size: 13px; }
+  details.ns { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px; overflow: hidden; }
+  details.ns > summary { padding: 10px 14px; cursor: pointer; font-weight: 600; display: flex; gap: 8px; align-items: center; user-select: none; }
+  details.ns > summary::-webkit-details-marker { display: none; }
+  details.ns > summary::before { content: "▸"; color: var(--muted); transition: transform .15s; display: inline-block; }
+  details.ns[open] > summary::before { transform: rotate(90deg); }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 7px 14px; border-top: 1px solid var(--border); vertical-align: top; }
+  th { font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
+  tbody tr:hover { background: var(--row-hover); }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; background: var(--code-bg); color: var(--muted); white-space: nowrap; }
+  .badge.ok { background: var(--ok-bg); color: var(--ok); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn); }
+  .badge.err { background: var(--err-bg); color: var(--err); }
+  .badge.accent { background: var(--accent-bg); color: var(--accent); }
+  .stack > * + * { margin-top: 2px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
+  .card > h2, .card > h3 { margin: 0; padding: 11px 14px; font-size: 15px; font-weight: 600; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .card > h3 { font-size: 14px; }
+  .card .body { padding: 4px 14px 12px; }
+  .card .card { margin: 0 14px 14px; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; padding: 4px 14px 14px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; overflow-wrap: anywhere; }
+  .crumbs { margin-bottom: 12px; color: var(--muted); }
+  .title { font-size: 22px; font-weight: 600; margin: 0 0 4px; overflow-wrap: anywhere; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; }
+  .grid2 > .card { margin-bottom: 0; }
+  .section-gap { height: 16px; }
+  pre.yaml { margin: 0; padding: 12px 14px; background: var(--code-bg); overflow: auto; max-height: 600px; font-size: 12.5px; }
+  .empty, .error, .loading { padding: 30px; text-align: center; color: var(--muted); }
+  .error { color: var(--err); }
+  .badge.health { font-weight: 600; letter-spacing: .03em; min-width: 52px; text-align: center; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .combo { position: relative; }
+  .combo-btn { display: inline-flex; align-items: center; gap: 8px; min-width: 210px; max-width: 320px; justify-content: space-between; }
+  .combo-btn .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .combo-btn .caret { color: var(--muted); font-size: 11px; }
+  .combo-pop { position: absolute; top: calc(100% + 4px); left: 0; z-index: 20; width: 320px; max-width: calc(100vw - 24px);
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.18); overflow: hidden; }
+  .combo-pop input { width: 100%; max-width: none; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; padding: 9px 12px; }
+  .combo-pop input:focus { outline: none; }
+  .combo-pop ul { list-style: none; margin: 0; padding: 4px 0; max-height: 320px; overflow-y: auto; }
+  .combo-pop li { padding: 6px 12px; cursor: pointer; display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+  .combo-pop li .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .combo-pop li.active { background: var(--accent-bg); }
+  .combo-pop li.selected .name { font-weight: 600; color: var(--accent); }
+  .combo-pop li.none { color: var(--muted); cursor: default; justify-content: center; }
+  mark { background: var(--warn-bg); color: inherit; border-radius: 2px; padding: 0 1px; }
+  .combo-pop mark { background: none; color: var(--accent); font-weight: 600; padding: 0; }
+  .combo-pop .meta { display: flex; gap: 4px; flex-shrink: 0; }
+  @media (max-width: 640px) {
+    header, main { padding-left: 12px; padding-right: 12px; }
+    .grid2 { grid-template-columns: 1fr; }
+    th, td { padding: 6px 10px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="#/">Ingress Query</a></h1>
+  <span class="spacer"></span>
+  <span id="updated" class="muted" style="font-size:12px"></span>
+</header>
+<main id="app"><div class="loading">Loading…</div></main>
+
+<script>
+(() => {
+  "use strict";
+  const app = document.getElementById("app");
+  const updated = document.getElementById("updated");
+  const state = { q: "", ns: "", status: "", items: null, open: new Set(), allOpen: true };
+
+  // ---------------------------------------------------------------- utils
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const enc = encodeURIComponent;
+
+  function age(ts) {
+    if (!ts) return "";
+    let s = Math.max(0, (Date.now() - new Date(ts).getTime()) / 1000);
+    const units = [["d", 86400], ["h", 3600], ["m", 60]];
+    for (const [u, n] of units) if (s >= n) {
+      const v = Math.floor(s / n), rest = s - v * n;
+      if (u === "d" && v < 10) { const h = Math.floor(rest / 3600); return h ? `${v}d${h}h` : `${v}d`; }
+      return `${v}${u}`;
+    }
+    return `${Math.floor(s)}s`;
+  }
+  const ageCell = (ts) => ts ? `<span title="${esc(new Date(ts).toLocaleString())}">${age(ts)}</span>` : "";
+
+  async function api(path, asText = false) {
+    const r = await fetch(path, { headers: { Accept: asText ? "text/plain" : "application/json" } });
+    if (!r.ok) {
+      let msg = await r.text();
+      try { msg = JSON.parse(msg).detail || msg; } catch {}
+      throw new Error(`${r.status}: ${msg}`);
+    }
+    return asText ? r.text() : r.json();
+  }
+
+  function highlight(text, needle) {
+    text = String(text ?? "");
+    const idx = needle ? text.toLowerCase().indexOf(needle) : -1;
+    if (idx < 0) return esc(text);
+    return esc(text.slice(0, idx)) + "<mark>" + esc(text.slice(idx, idx + needle.length)) + "</mark>" + esc(text.slice(idx + needle.length));
+  }
+
+  // Search matches metadata.name or any host of the ingress.
+  const matchesSearch = (i, needle) =>
+    !needle || i.name.toLowerCase().includes(needle) || i.hosts.some((h) => h.host.toLowerCase().includes(needle));
+
+  function hostLink(h, needle = "") {
+    const scheme = h.tls ? "https" : "http";
+    return `<a href="${scheme}://${esc(h.host)}" target="_blank" rel="noopener">${highlight(h.host, needle)}</a>` +
+      (h.tls ? ` <span class="badge ok" title="Covered by TLS">TLS</span>` : "");
+  }
+
+  function statusBadge(status) {
+    const cls = ["Running", "Succeeded", "Completed"].includes(status) ? "ok"
+      : ["Pending", "ContainerCreating", "Terminating", "PodInitializing"].includes(status) ? "warn" : "err";
+    return `<span class="badge ${cls}">${esc(status)}</span>`;
+  }
+
+  const HEALTH_CLS = { UP: "ok", DEGRADED: "warn", DOWN: "err", UNKNOWN: "" };
+  function healthBadge(h) {
+    if (!h) return "";
+    const tip = h.reasons && h.reasons.length ? h.reasons.join("\n") : "All backend services have ready endpoints";
+    return `<span class="badge health ${HEALTH_CLS[h.status] ?? ""}" title="${esc(tip)}">${esc(h.status)}</span>`;
+  }
+
+  function backendText(b) {
+    if (!b) return `<span class="muted">—</span>`;
+    if (b.kind === "Service") {
+      return `<a href="#svc-${esc(b.name)}">${esc(b.name)}</a>${b.port != null ? `<span class="muted">:${esc(b.port)}</span>` : ""}`;
+    }
+    return `${esc(b.kind)}/${esc(b.name)}${b.apiGroup ? ` <span class="muted">(${esc(b.apiGroup)})</span>` : ""}`;
+  }
+
+  const kvTable = (obj) => {
+    const keys = Object.keys(obj || {}).sort();
+    if (!keys.length) return `<div class="body muted">None</div>`;
+    return `<div class="table-wrap"><table><tbody>${keys.map((k) =>
+      `<tr><td class="mono" style="white-space:nowrap">${esc(k)}</td><td class="mono" style="overflow-wrap:anywhere">${esc(obj[k])}</td></tr>`).join("")}</tbody></table></div>`;
+  };
+
+  // ---------------------------------------------------------------- list view
+  async function loadList(force = false) {
+    if (state.items && !force) return;
+    state.items = (await api("/api/ingresses")).items;
+    updated.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+  }
+
+  function renderListShell() {
+    const namespaces = [...new Set(state.items.map((i) => i.namespace))].sort();
+    if (state.ns && !namespaces.includes(state.ns)) state.ns = "";
+    app.innerHTML = `
+      <div class="toolbar">
+        <input id="q" type="search" placeholder="Search by ingress name or host…" value="${esc(state.q)}" autocomplete="off" autofocus>
+        <div class="combo" id="ns-combo">
+          <button type="button" id="ns-btn" class="combo-btn" aria-haspopup="listbox" aria-expanded="false">
+            <span class="label" id="ns-label"></span><span class="caret">▾</span>
+          </button>
+          <div class="combo-pop" id="ns-pop" hidden>
+            <input id="ns-filter" type="search" placeholder="Filter namespaces…" autocomplete="off" aria-label="Filter namespaces">
+            <ul id="ns-list" role="listbox"></ul>
+          </div>
+        </div>
+        <select id="status">
+          <option value="">All statuses</option>
+          ${["UP", "DEGRADED", "DOWN", "UNKNOWN"].map((st) => `<option ${st === state.status ? "selected" : ""}>${st}</option>`).join("")}
+        </select>
+        <button id="toggle">${state.allOpen ? "Collapse all" : "Expand all"}</button>
+        <button id="refresh">Refresh</button>
+        <span id="count" class="count"></span>
+      </div>
+      <div id="list"></div>`;
+    const q = document.getElementById("q");
+    q.addEventListener("input", () => { state.q = q.value; syncQuery(); renderList(); });
+    setupNsCombo(namespaces);
+    document.getElementById("status").addEventListener("change", (e) => { state.status = e.target.value; syncQuery(); renderList(); });
+    document.getElementById("refresh").addEventListener("click", async () => {
+      try { await loadList(true); renderListShell(); } catch (e) { showError(e); }
+    });
+    document.getElementById("toggle").addEventListener("click", (e) => {
+      state.allOpen = !state.allOpen;
+      state.open.clear();
+      e.target.textContent = state.allOpen ? "Collapse all" : "Expand all";
+      renderList();
+    });
+    if (state.q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
+    renderList();
+  }
+
+  // ---------------------------------------------------------------- namespace combobox
+  function setupNsCombo(namespaces) {
+    const btn = document.getElementById("ns-btn");
+    const label = document.getElementById("ns-label");
+    const pop = document.getElementById("ns-pop");
+    const input = document.getElementById("ns-filter");
+    const list = document.getElementById("ns-list");
+    const stats = new Map(namespaces.map((n) => [n, { total: 0, down: 0 }]));
+    for (const i of state.items) {
+      const st = stats.get(i.namespace);
+      st.total++;
+      if (i.health?.status === "DOWN") st.down++;
+    }
+    let options = [], active = 0;
+
+    const setLabel = () => {
+      label.textContent = state.ns || `All namespaces (${namespaces.length})`;
+      btn.title = state.ns || "All namespaces";
+    };
+
+    function renderOptions() {
+      const needle = input.value.trim().toLowerCase();
+      const matches = namespaces.filter((n) => !needle || n.toLowerCase().includes(needle));
+      options = needle ? matches : ["", ...matches];
+      active = Math.min(active, Math.max(0, options.length - 1));
+      if (!options.length) {
+        list.innerHTML = `<li class="none">No namespace matches</li>`;
+        return;
+      }
+      list.innerHTML = options.map((n, idx) => {
+        const st = stats.get(n);
+        const meta = n === ""
+          ? `<span class="badge">${state.items.length}</span>`
+          : `${st.down ? `<span class="badge err">${st.down} down</span>` : ""}<span class="badge">${st.total}</span>`;
+        return `<li role="option" data-idx="${idx}" class="${idx === active ? "active" : ""} ${n === state.ns ? "selected" : ""}" aria-selected="${n === state.ns}">
+          <span class="name">${n === "" ? "All namespaces" : highlight(n, needle)}</span><span class="meta">${meta}</span></li>`;
+      }).join("");
+      list.querySelector("li.active")?.scrollIntoView({ block: "nearest" });
+    }
+
+    function open() {
+      pop.hidden = false;
+      btn.setAttribute("aria-expanded", "true");
+      input.value = "";
+      active = Math.max(0, ["", ...namespaces].indexOf(state.ns));
+      renderOptions();
+      input.focus();
+    }
+    function close(focusBtn = false) {
+      pop.hidden = true;
+      btn.setAttribute("aria-expanded", "false");
+      if (focusBtn) btn.focus();
+    }
+    function choose(idx) {
+      if (idx < 0 || idx >= options.length) return;
+      state.ns = options[idx];
+      setLabel();
+      close(true);
+      syncQuery();
+      renderList();
+    }
+
+    btn.addEventListener("click", () => (pop.hidden ? open() : close()));
+    input.addEventListener("input", () => { active = 0; renderOptions(); });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown") { active = Math.min(active + 1, options.length - 1); renderOptions(); e.preventDefault(); }
+      else if (e.key === "ArrowUp") { active = Math.max(active - 1, 0); renderOptions(); e.preventDefault(); }
+      else if (e.key === "Enter") { choose(active); e.preventDefault(); }
+      else if (e.key === "Escape") { close(true); e.preventDefault(); }
+    });
+    list.addEventListener("mousedown", (e) => e.preventDefault()); // keep focus in the input
+    list.addEventListener("click", (e) => {
+      const li = e.target.closest("li[data-idx]");
+      if (li) choose(Number(li.dataset.idx));
+    });
+    list.addEventListener("mousemove", (e) => {
+      const li = e.target.closest("li[data-idx]");
+      if (li && Number(li.dataset.idx) !== active) {
+        list.querySelector("li.active")?.classList.remove("active");
+        li.classList.add("active");
+        active = Number(li.dataset.idx);
+      }
+    });
+    setLabel();
+  }
+
+  // Close the namespace dropdown on outside click.
+  document.addEventListener("mousedown", (e) => {
+    const combo = document.getElementById("ns-combo");
+    const pop = document.getElementById("ns-pop");
+    if (combo && pop && !pop.hidden && !combo.contains(e.target)) {
+      pop.hidden = true;
+      document.getElementById("ns-btn").setAttribute("aria-expanded", "false");
+    }
+  });
+
+  function syncQuery() {
+    const p = new URLSearchParams();
+    if (state.q) p.set("q", state.q);
+    if (state.ns) p.set("ns", state.ns);
+    if (state.status) p.set("status", state.status);
+    const qs = p.toString();
+    history.replaceState(null, "", "#/" + (qs ? "?" + qs : ""));
+  }
+
+  function nsProblems(items) {
+    const down = items.filter((i) => i.health?.status === "DOWN").length;
+    const degraded = items.filter((i) => i.health?.status === "DEGRADED").length;
+    return (down ? ` <span class="badge err">${down} down</span>` : "") +
+      (degraded ? ` <span class="badge warn">${degraded} degraded</span>` : "");
+  }
+
+  function renderList() {
+    const needle = state.q.trim().toLowerCase();
+    const filtered = state.items.filter((i) =>
+      (!state.ns || i.namespace === state.ns) && (!state.status || i.health?.status === state.status) && matchesSearch(i, needle));
+    const groups = new Map();
+    for (const i of filtered) {
+      if (!groups.has(i.namespace)) groups.set(i.namespace, []);
+      groups.get(i.namespace).push(i);
+    }
+    const down = state.items.filter((i) => i.health?.status === "DOWN").length;
+    document.getElementById("count").textContent =
+      `${filtered.length} of ${state.items.length} ingresses in ${groups.size} namespace${groups.size === 1 ? "" : "s"}` +
+      (down ? ` · ${down} down` : "");
+    const list = document.getElementById("list");
+    if (!filtered.length) {
+      list.innerHTML = `<div class="empty">${state.items.length ? "No ingress matches the filter." : "No ingresses found in the cluster."}</div>`;
+      return;
+    }
+    // When searching, always expand groups so matches are visible.
+    const filtering = needle || state.ns || state.status;
+    const isOpen = (ns) => filtering || (state.allOpen ? !state.open.has(ns) : state.open.has(ns));
+    list.innerHTML = [...groups].map(([ns, items]) => `
+      <details class="ns" data-ns="${esc(ns)}" ${isOpen(ns) ? "open" : ""}>
+        <summary>${esc(ns)} <span class="badge">${items.length}</span>${nsProblems(items)}</summary>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Status</th><th>Name</th><th>Class</th><th>Hosts</th><th>Address</th><th>Services</th><th>Age</th></tr></thead>
+          <tbody>${items.map((i) => `
+            <tr>
+              <td>${healthBadge(i.health)}</td>
+              <td><a href="#/ingress/${enc(i.namespace)}/${enc(i.name)}"><strong>${highlight(i.name, needle)}</strong></a></td>
+              <td>${i.ingressClass ? `<span class="badge accent">${esc(i.ingressClass)}</span>` : `<span class="muted">—</span>`}</td>
+              <td class="stack">${i.hosts.length ? i.hosts.map((h) => `<div>${hostLink(h, needle)}</div>`).join("") : `<span class="muted">*</span>`}</td>
+              <td class="mono">${i.addresses.map(esc).join("<br>") || `<span class="muted">—</span>`}</td>
+              <td class="stack">${i.services.map((s) => `<div>${esc(s)}</div>`).join("") || `<span class="muted">—</span>`}</td>
+              <td>${ageCell(i.created)}</td>
+            </tr>`).join("")}
+          </tbody>
+        </table></div>
+      </details>`).join("");
+    list.querySelectorAll("details.ns").forEach((d) => d.addEventListener("toggle", () => {
+      if (filtering) return;
+      const ns = d.dataset.ns;
+      const deviates = state.allOpen ? !d.open : d.open;
+      deviates ? state.open.add(ns) : state.open.delete(ns);
+    }));
+  }
+
+  // ---------------------------------------------------------------- detail view
+  async function renderDetail(ns, name) {
+    app.innerHTML = `<div class="loading">Loading ${esc(ns)}/${esc(name)}…</div>`;
+    const d = await api(`/api/ingresses/${enc(ns)}/${enc(name)}`);
+    updated.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    const backParams = new URLSearchParams(Object.entries({ q: state.q, ns: state.ns, status: state.status }).filter(([, v]) => v));
+    const backHref = "#/" + (backParams.toString() ? "?" + backParams : "");
+
+    const rulesRows = d.rules.flatMap((r) => (r.paths.length ? r.paths : [{ path: "", pathType: "", backend: null }]).map((p, idx) => `
+      <tr>
+        <td>${idx === 0 ? (r.host ? hostLink({ host: r.host, tls: r.tls }) : `<span class="muted">* (any host)</span>`) : ""}</td>
+        <td class="mono">${esc(p.path)}</td>
+        <td>${p.pathType ? `<span class="badge">${esc(p.pathType)}</span>` : ""}</td>
+        <td>${backendText(p.backend)}</td>
+      </tr>`)).join("");
+
+    const services = d.backendServices.map((s) => {
+      if (!s.found) return `
+        <div class="card" id="svc-${esc(s.name)}"><h3>Service ${esc(s.name)} <span class="badge err">Not found</span></h3>
+        <div class="body muted">The ingress references this service, but it does not exist in namespace ${esc(d.namespace)}.</div></div>`;
+      const ep = s.endpoints;
+      const epBadge = ep == null ? "" : ep.ready > 0
+        ? `<span class="badge ok">${ep.ready} ready endpoint${ep.ready === 1 ? "" : "s"}</span>`
+        : `<span class="badge err">No ready endpoints</span>`;
+      const epNotReady = ep && ep.notReady ? ` <span class="badge warn">${ep.notReady} not ready</span>` : "";
+      const selector = Object.entries(s.selector || {});
+      const pods = s.pods.length ? `
+        <div class="table-wrap"><table>
+          <thead><tr><th>Pod</th><th>Status</th><th>Ready</th><th>Restarts</th><th>Pod IP</th><th>Node</th><th>Owner</th><th>Images</th><th>Age</th></tr></thead>
+          <tbody>${s.pods.map((p) => `
+            <tr>
+              <td class="mono">${esc(p.name)}</td>
+              <td>${statusBadge(p.status)}</td>
+              <td>${esc(p.ready)}</td>
+              <td>${p.restarts ? `<span class="badge warn">${p.restarts}</span>` : "0"}</td>
+              <td class="mono">${esc(p.podIP || "")}</td>
+              <td class="mono">${esc(p.node || "")}</td>
+              <td class="mono">${esc(p.owner || "")}</td>
+              <td class="stack mono">${p.containers.map((c) => `<div title="${esc(c.name)}${c.ready ? " (ready)" : " (not ready)"}">${esc(c.image)}</div>`).join("")}</td>
+              <td>${ageCell(p.created)}</td>
+            </tr>`).join("")}</tbody>
+        </table></div>`
+        : `<div class="body muted">${selector.length ? "No pods match the service selector." : "Service has no selector, so pods cannot be resolved from it."}</div>`;
+      return `
+        <div class="card" id="svc-${esc(s.name)}">
+          <h3>Service ${esc(s.name)} <span class="badge accent">${esc(s.type)}</span> ${epBadge}${epNotReady}</h3>
+          <dl class="kv">
+            <dt>Cluster IP</dt><dd class="mono">${esc(s.clusterIP || "—")}</dd>
+            ${s.externalName ? `<dt>External name</dt><dd class="mono">${esc(s.externalName)}</dd>` : ""}
+            <dt>Ports</dt><dd class="chips">${s.ports.map((p) =>
+              `<span class="badge mono">${p.name ? esc(p.name) + " " : ""}${esc(p.port)}→${esc(p.targetPort)}/${esc(p.protocol)}${p.nodePort ? ` (node ${esc(p.nodePort)})` : ""}</span>`).join("") || "—"}</dd>
+            <dt>Selector</dt><dd class="chips">${selector.map(([k, v]) => `<span class="badge mono">${esc(k)}=${esc(v)}</span>`).join("") || `<span class="muted">none</span>`}</dd>
+          </dl>
+          <h3 style="padding:0 14px 6px;margin:0;font-size:13px" class="muted">Pods (${s.pods.length})</h3>
+          ${pods}
+        </div>`;
+    }).join("");
+
+    const events = d.events == null
+      ? `<div class="body muted">Events are not available (missing permission).</div>`
+      : d.events.length ? `<div class="table-wrap"><table>
+          <thead><tr><th>Type</th><th>Reason</th><th>Message</th><th>Source</th><th>Count</th><th>Last seen</th></tr></thead>
+          <tbody>${d.events.map((e) => `<tr>
+            <td><span class="badge ${e.type === "Warning" ? "warn" : ""}">${esc(e.type)}</span></td>
+            <td>${esc(e.reason)}</td><td>${esc(e.message)}</td><td class="muted">${esc(e.source || "")}</td>
+            <td>${esc(e.count ?? "")}</td><td>${ageCell(e.lastSeen)}</td></tr>`).join("")}</tbody></table></div>`
+        : `<div class="body muted">No recent events.</div>`;
+
+    app.innerHTML = `
+      <div class="crumbs"><a href="${backHref}">← All ingresses</a> / ${esc(d.namespace)}</div>
+      <div class="toolbar" style="justify-content:space-between">
+        <div>
+          <div class="title">${esc(d.name)} ${healthBadge(d.health)}</div>
+          <span class="muted">Namespace <strong>${esc(d.namespace)}</strong> · created ${ageCell(d.created)} ago</span>
+        </div>
+        <button id="reload">Refresh</button>
+      </div>
+
+      <div class="grid2">
+        <div class="card"><h2>Overview</h2>
+          <dl class="kv">
+            <dt>Status</dt><dd>${healthBadge(d.health)}${d.health.reasons.length ? `<div class="stack muted" style="margin-top:4px">${d.health.reasons.map((r) => `<div>${esc(r)}</div>`).join("")}</div>` : ""}</dd>
+            <dt>Ingress class</dt><dd>${d.ingressClass ? `<span class="badge accent">${esc(d.ingressClass)}</span>` : `<span class="muted">default / none</span>`}</dd>
+            <dt>Address</dt><dd class="mono">${d.addresses.map(esc).join(", ") || `<span class="muted">not assigned</span>`}</dd>
+            <dt>Hosts</dt><dd class="stack">${d.hosts.map((h) => `<div>${hostLink(h)}</div>`).join("") || `<span class="muted">*</span>`}</dd>
+            <dt>Default backend</dt><dd>${backendText(d.defaultBackend)}</dd>
+            <dt>Created</dt><dd>${d.created ? esc(new Date(d.created).toLocaleString()) : ""}</dd>
+          </dl>
+        </div>
+        <div class="card"><h2>TLS</h2>
+          ${d.tls.length ? `<div class="table-wrap"><table><thead><tr><th>Secret</th><th>Hosts</th></tr></thead><tbody>
+            ${d.tls.map((t) => `<tr><td class="mono">${esc(t.secretName || "(default certificate)")}</td><td class="stack">${t.hosts.map((h) => `<div>${esc(h)}</div>`).join("") || `<span class="muted">—</span>`}</td></tr>`).join("")}
+          </tbody></table></div>` : `<div class="body muted">No TLS configured.</div>`}
+        </div>
+      </div>
+      <div class="section-gap"></div>
+
+      <div class="card"><h2>Rules</h2>
+        ${d.rules.length ? `<div class="table-wrap"><table><thead><tr><th>Host</th><th>Path</th><th>Path type</th><th>Backend</th></tr></thead><tbody>${rulesRows}</tbody></table></div>`
+          : `<div class="body muted">No rules; all traffic goes to the default backend.</div>`}
+      </div>
+
+      <h2 style="font-size:16px;margin:22px 0 10px">Backend services &amp; pods</h2>
+      ${services || `<div class="card"><div class="body muted" style="padding-top:12px">This ingress has no service backends.</div></div>`}
+
+      <div class="card"><h2>Events</h2>${events}</div>
+
+      <div class="grid2">
+        <div class="card"><h2>Labels</h2>${kvTable(d.labels)}</div>
+        <div class="card"><h2>Annotations</h2>${kvTable(d.annotations)}</div>
+      </div>
+      <div class="section-gap"></div>
+
+      <details class="card" id="yaml-box"><summary style="padding:11px 14px;cursor:pointer;font-weight:600">YAML</summary>
+        <pre class="yaml mono" id="yaml">Loading…</pre>
+      </details>`;
+
+    document.getElementById("reload").addEventListener("click", () => route());
+    const yamlBox = document.getElementById("yaml-box");
+    yamlBox.addEventListener("toggle", async () => {
+      if (!yamlBox.open || yamlBox.dataset.loaded) return;
+      try {
+        document.getElementById("yaml").textContent = await api(`/api/ingresses/${enc(ns)}/${enc(name)}/yaml`, true);
+        yamlBox.dataset.loaded = "1";
+      } catch (e) { document.getElementById("yaml").textContent = e.message; }
+    });
+  }
+
+  // ---------------------------------------------------------------- router
+  function showError(e) {
+    app.innerHTML = `<div class="error">Failed to load data: ${esc(e.message)}</div>`;
+  }
+
+  async function route() {
+    const hash = location.hash.replace(/^#/, "") || "/";
+    const [path, qs] = hash.split("?");
+    const m = path.match(/^\/ingress\/([^/]+)\/([^/]+)$/);
+    try {
+      if (m) {
+        await renderDetail(decodeURIComponent(m[1]), decodeURIComponent(m[2]));
+        window.scrollTo(0, 0);
+      } else {
+        const p = new URLSearchParams(qs || "");
+        state.q = p.get("q") || "";
+        state.ns = p.get("ns") || "";
+        state.status = p.get("status") || "";
+        if (!state.items) app.innerHTML = `<div class="loading">Loading ingresses…</div>`;
+        await loadList(true);
+        renderListShell();
+      }
+    } catch (e) { showError(e); }
+  }
+
+  // In-page anchors (#svc-…) must not trigger routing.
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest('a[href^="#svc-"]');
+    if (!a) return;
+    e.preventDefault();
+    document.getElementById(a.getAttribute("href").slice(1))?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  window.addEventListener("hashchange", route);
+  route();
+})();
+</script>
+</body>
+</html>

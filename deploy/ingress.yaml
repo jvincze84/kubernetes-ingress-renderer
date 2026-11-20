@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-query
+  namespace: ingress-query
+  # Add your auth / TLS related annotations here.
+spec:
+  # ingressClassName: nginx
+  rules:
+    - host: ingress-query.example.com   # <-- change me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ingress-query
+                port:
+                  name: http

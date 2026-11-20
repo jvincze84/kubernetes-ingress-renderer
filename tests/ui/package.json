@@ -1,0 +1,11 @@
+{
+  "name": "ingress-query-ui-tests",
+  "private": true,
+  "description": "jsdom-based behaviour tests for app/static/index.html",
+  "scripts": {
+    "test": "for f in *.test.js; do echo \"== $f\"; node \"$f\" || exit 1; done"
+  },
+  "devDependencies": {
+    "jsdom": "25.0.1"
+  }
+}

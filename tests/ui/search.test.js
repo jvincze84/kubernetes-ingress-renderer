@@ -1,0 +1,23 @@
+const { JSDOM } = require("jsdom");
+const html = require("fs").readFileSync(require("path").join(__dirname, "../../app/static/index.html"), "utf8");
+const mk = (namespace, name, hosts) => ({ namespace, name, ingressClass: null, hosts: hosts.map((host) => ({ host, tls: true })), addresses: [], services: [], created: null, health: { status: "UP", reasons: [] } });
+const items = [mk("shop", "frontend", ["www.shop.example.com"]), mk("shop", "api", ["api.shop.example.com"]), mk("blog", "wordpress", ["blog.example.org", "news.example.org"])];
+const dom = new JSDOM(html, { runScripts: "dangerously", url: "http://x/#/", beforeParse(w) { w.fetch = async () => ({ ok: true, json: async () => ({ items }) }); w.Element.prototype.scrollIntoView = () => {}; } });
+const w = dom.window, d = w.document, tick = () => new Promise((r) => setTimeout(r, 50));
+const rows = () => [...d.querySelectorAll("#list tbody tr strong")].map((x) => x.textContent);
+const search = (v) => { const q = d.getElementById("q"); q.value = v; q.dispatchEvent(new w.Event("input")); };
+const assert = (c, m) => { if (!c) { console.error("FAIL:", m, rows()); process.exit(1); } console.log("ok -", m); };
+(async () => {
+  await tick();
+  assert(d.getElementById("q").placeholder.includes("host"), "placeholder mentions host");
+  search("NEWS.example"); assert(JSON.stringify(rows()) === '["wordpress"]', "matches by second host, case-insensitive");
+  assert(d.querySelector("#list td a[target] mark")?.textContent === "news.example", "host match highlighted");
+  search("shop.example"); assert(rows().length === 2, "host substring matches several ingresses");
+  search("front"); assert(JSON.stringify(rows()) === '["frontend"]' && d.querySelector("#list strong mark")?.textContent === "front", "name match still works + highlighted");
+  search("api"); assert(JSON.stringify(rows()) === '["api"]', "name+host match counted once");
+  search("zzz"); assert(d.querySelector("#list .empty"), "no-match message");
+  search(""); assert(rows().length === 3 && !d.querySelector("#list mark"), "cleared search shows all, no marks");
+  w.location.hash = "#/?q=blog.example"; await tick(); await tick();
+  assert(JSON.stringify(rows()) === '["wordpress"]', "host search restored from URL");
+  console.log("ALL OK");
+})();

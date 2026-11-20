@@ -1,0 +1,48 @@
+const { JSDOM } = require("jsdom");
+const fs = require("fs");
+const html = fs.readFileSync(require("path").join(__dirname, "../../app/static/index.html"), "utf8");
+const mk = (namespace, name, status) => ({ namespace, name, ingressClass: "nginx", hosts: [], addresses: [], services: ["s"], created: null, health: { status, reasons: [] } });
+const items = [mk("kube-system", "dash", "UP"), mk("payments-prod", "pay", "DOWN"), mk("payments-dev", "pay", "UP"), mk("monitoring", "grafana", "UP")];
+const dom = new JSDOM(html, { runScripts: "dangerously", url: "http://x/#/", pretendToBeVisual: true,
+  beforeParse(w) {
+    w.fetch = async () => ({ ok: true, json: async () => ({ items }) });
+    w.Element.prototype.scrollIntoView = () => {};
+  } });
+const w = dom.window, d = w.document;
+const tick = () => new Promise((r) => setTimeout(r, 50));
+const key = (el, k) => el.dispatchEvent(new w.KeyboardEvent("keydown", { key: k, bubbles: true }));
+const names = () => [...d.querySelectorAll("#ns-list li .name")].map((x) => x.textContent);
+const shown = () => [...d.querySelectorAll("details.ns")].map((x) => x.dataset.ns);
+(async () => {
+  await tick();
+  const assert = (c, m) => { if (!c) { console.error("FAIL:", m); process.exit(1); } console.log("ok -", m); };
+  assert(d.getElementById("ns-label").textContent === "All namespaces (4)", "default label");
+  d.getElementById("ns-btn").click();
+  assert(!d.getElementById("ns-pop").hidden, "popup opens");
+  assert(d.activeElement.id === "ns-filter", "filter input focused");
+  assert(names().length === 5, "lists All + 4 namespaces");
+  const inp = d.getElementById("ns-filter");
+  inp.value = "PAY"; inp.dispatchEvent(new w.Event("input"));
+  assert(JSON.stringify(names()) === '["payments-dev","payments-prod"]', "filter is case-insensitive: " + names());
+  assert(d.querySelector("#ns-list mark").textContent === "pay", "match highlighted");
+  assert(d.querySelectorAll("#ns-list .badge.err").length === 1, "down badge shown");
+  key(inp, "ArrowDown"); key(inp, "Enter");
+  await tick();
+  assert(d.getElementById("ns-pop").hidden, "closes after Enter");
+  assert(d.getElementById("ns-label").textContent === "payments-prod", "selected via keyboard");
+  assert(JSON.stringify(shown()) === '["payments-prod"]', "list filtered to namespace");
+  assert(w.location.hash === "#/?ns=payments-prod", "URL synced: " + w.location.hash);
+  d.getElementById("ns-btn").click();
+  inp.value = "zzz"; inp.dispatchEvent(new w.Event("input"));
+  assert(d.querySelector("#ns-list li.none"), "no-match message");
+  key(inp, "Escape");
+  assert(d.getElementById("ns-pop").hidden && d.getElementById("ns-label").textContent === "payments-prod", "Escape closes, keeps selection");
+  d.getElementById("ns-btn").click();
+  d.querySelector('#ns-list li[data-idx="0"]').click();
+  await tick();
+  assert(shown().length === 4 && w.location.hash === "#/", "choosing 'All namespaces' resets");
+  d.getElementById("ns-btn").click();
+  d.body.dispatchEvent(new w.MouseEvent("mousedown", { bubbles: true }));
+  assert(d.getElementById("ns-pop").hidden, "outside click closes");
+  console.log("ALL OK");
+})();

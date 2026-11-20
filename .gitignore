@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node (UI tests)
+node_modules/
+tests/ui/package-lock.json
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Local env / secrets
+.env
+*.env
+kubeconfig*
+
+# Claude Code per-user local settings
+.claude/settings.local.json
