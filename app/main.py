@@ -403,6 +403,26 @@ def get_ingress_yaml(namespace: str, name: str):
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
+NO_CACHE = {"Cache-Control": "no-cache"}  # always revalidate; the service worker handles offline
+
+
 @app.get("/", include_in_schema=False)
 def index():
-    return FileResponse(STATIC_DIR / "index.html")
+    return FileResponse(STATIC_DIR / "index.html", headers=NO_CACHE)
+
+
+# PWA files live at the root: the service worker's scope is the directory it is served from.
+@app.get("/sw.js", include_in_schema=False)
+def service_worker():
+    return FileResponse(
+        STATIC_DIR / "sw.js",
+        media_type="text/javascript",
+        headers={**NO_CACHE, "Service-Worker-Allowed": "/"},
+    )
+
+
+@app.get("/manifest.webmanifest", include_in_schema=False)
+def manifest():
+    return FileResponse(
+        STATIC_DIR / "manifest.webmanifest", media_type="application/manifest+json", headers=NO_CACHE
+    )

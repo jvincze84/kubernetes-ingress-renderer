@@ -2,7 +2,7 @@ const { JSDOM } = require("jsdom");
 const html = require("fs").readFileSync(require("path").join(__dirname, "../../app/static/index.html"), "utf8");
 const mk = (namespace, name, hosts) => ({ namespace, name, ingressClass: null, hosts: hosts.map((host) => ({ host, tls: true })), addresses: [], services: [], created: null, health: { status: "UP", reasons: [] } });
 const items = [mk("shop", "frontend", ["www.shop.example.com"]), mk("shop", "api", ["api.shop.example.com"]), mk("blog", "wordpress", ["blog.example.org", "news.example.org"])];
-const dom = new JSDOM(html, { runScripts: "dangerously", url: "http://x/#/", beforeParse(w) { w.fetch = async () => ({ ok: true, json: async () => ({ items }) }); w.Element.prototype.scrollIntoView = () => {}; } });
+const dom = new JSDOM(html, { runScripts: "dangerously", url: "http://x/#/", beforeParse(w) { w.fetch = async () => ({ ok: true, headers: { get: () => null }, json: async () => ({ items }) }); w.Element.prototype.scrollIntoView = () => {}; } });
 const w = dom.window, d = w.document, tick = () => new Promise((r) => setTimeout(r, 50));
 const rows = () => [...d.querySelectorAll("#list tbody tr strong")].map((x) => x.textContent);
 const search = (v) => { const q = d.getElementById("q"); q.value = v; q.dispatchEvent(new w.Event("input")); };

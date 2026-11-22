@@ -175,3 +175,22 @@ def test_yaml_and_errors(api):
     assert api.get("/api/ingresses/prod/nope").status_code == 404
     assert api.get("/").status_code == 200
     assert api.get("/healthz").json() == {"status": "ok"}
+
+
+def test_pwa_files(api):
+    sw = api.get("/sw.js")
+    assert sw.status_code == 200
+    assert sw.headers["content-type"].startswith("text/javascript")
+    assert sw.headers["service-worker-allowed"] == "/"
+    assert sw.headers["cache-control"] == "no-cache"
+
+    mf = api.get("/manifest.webmanifest")
+    assert mf.status_code == 200 and mf.headers["content-type"].startswith("application/manifest+json")
+    manifest = mf.json()
+    assert manifest["display"] == "standalone" and manifest["start_url"] == "/"
+    sizes = {(i["sizes"], i.get("purpose", "any")) for i in manifest["icons"]}
+    assert {("192x192", "any"), ("512x512", "any"), ("512x512", "maskable")} <= sizes
+    for icon in manifest["icons"]:  # every referenced icon must actually be served
+        assert api.get(icon["src"]).status_code == 200, icon["src"]
+    assert api.get("/static/icons/apple-touch-icon.png").status_code == 200
+    assert api.get("/").headers["cache-control"] == "no-cache"

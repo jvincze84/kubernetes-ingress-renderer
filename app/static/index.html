@@ -2,8 +2,20 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ingress Query</title>
+<meta name="description" content="Read-only browser for Kubernetes Ingresses, their services and pods.">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1a1e26" media="(prefers-color-scheme: dark)">
+<!-- use-credentials: the manifest request must carry cookies when an auth proxy sits in front -->
+<link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
+<link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/static/icons/icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Ingresses">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <style>
   :root {
     --bg: #f6f7f9; --panel: #ffffff; --fg: #1d2330; --muted: #657084; --border: #dfe3ea;
@@ -26,7 +38,14 @@
   a:hover { text-decoration: underline; }
   code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
   header { background: var(--panel); border-bottom: 1px solid var(--border); padding: 12px 20px;
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-left: max(20px, env(safe-area-inset-left)); padding-right: max(20px, env(safe-area-inset-right));
     display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 5; }
+  header h1 a { display: inline-flex; align-items: center; gap: 8px; }
+  header h1 img { width: 22px; height: 22px; border-radius: 5px; }
+  #install { padding: 4px 10px; font-size: 13px; }
+  .offline-banner { background: var(--warn-bg); color: var(--warn); border-bottom: 1px solid var(--border);
+    padding: 7px 20px; font-size: 13px; text-align: center; }
   header h1 { font-size: 17px; margin: 0; font-weight: 600; }
   header h1 a { color: var(--fg); }
   header .spacer { flex: 1; }
@@ -101,10 +120,12 @@
 </head>
 <body>
 <header>
-  <h1><a href="#/">Ingress Query</a></h1>
+  <h1><a href="#/"><img src="/static/icons/icon.svg" alt="">Ingress Query</a></h1>
   <span class="spacer"></span>
   <span id="updated" class="muted" style="font-size:12px"></span>
+  <button id="install" type="button" hidden title="Install as an app">Install</button>
 </header>
+<div id="offline" class="offline-banner" role="status" hidden></div>
 <main id="app"><div class="loading">Loading…</div></main>
 
 <script>
@@ -131,8 +152,25 @@
   }
   const ageCell = (ts) => ts ? `<span title="${esc(new Date(ts).toLocaleString())}">${age(ts)}</span>` : "";
 
+  // Set by api(): ISO time of the cached copy when the service worker answered from cache (server unreachable).
+  let cachedAt = null;
+
+  function markUpdated() {
+    const banner = document.getElementById("offline");
+    if (cachedAt !== null) {
+      const when = cachedAt ? new Date(cachedAt).toLocaleString() : "an earlier visit";
+      updated.textContent = "Offline";
+      banner.textContent = `Can't reach the server. Showing cached data from ${when}.`;
+      banner.hidden = false;
+    } else {
+      updated.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+      banner.hidden = true;
+    }
+  }
+
   async function api(path, asText = false) {
     const r = await fetch(path, { headers: { Accept: asText ? "text/plain" : "application/json" } });
+    cachedAt = r.headers.get("X-SW-Cached-At");
     if (!r.ok) {
       let msg = await r.text();
       try { msg = JSON.parse(msg).detail || msg; } catch {}
@@ -190,7 +228,7 @@
   async function loadList(force = false) {
     if (state.items && !force) return;
     state.items = (await api("/api/ingresses")).items;
-    updated.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    markUpdated();
   }
 
   function renderListShell() {
@@ -397,7 +435,7 @@
   async function renderDetail(ns, name) {
     app.innerHTML = `<div class="loading">Loading ${esc(ns)}/${esc(name)}…</div>`;
     const d = await api(`/api/ingresses/${enc(ns)}/${enc(name)}`);
-    updated.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    markUpdated();
     const backParams = new URLSearchParams(Object.entries({ q: state.q, ns: state.ns, status: state.status }).filter(([, v]) => v));
     const backHref = "#/" + (backParams.toString() ? "?" + backParams : "");
 
@@ -554,6 +592,31 @@
     document.getElementById(a.getAttribute("href").slice(1))?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
   window.addEventListener("hashchange", route);
+
+  // ---------------------------------------------------------------- PWA
+  if ("serviceWorker" in navigator && window.isSecureContext) {
+    navigator.serviceWorker.register("/sw.js").catch((e) => console.warn("Service worker registration failed:", e));
+  }
+  // Reload the current view when the connection comes back after showing cached data.
+  window.addEventListener("online", () => { if (cachedAt !== null) route(); });
+
+  // Chromium-based browsers: offer an explicit Install button.
+  let installPrompt = null;
+  const installBtn = document.getElementById("install");
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    installPrompt = e;
+    installBtn.hidden = false;
+  });
+  installBtn.addEventListener("click", async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    await installPrompt.userChoice.catch(() => {});
+    installPrompt = null;
+    installBtn.hidden = true;
+  });
+  window.addEventListener("appinstalled", () => { installPrompt = null; installBtn.hidden = true; });
+
   route();
 })();
 </script>

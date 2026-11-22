@@ -36,6 +36,17 @@ services and pods behind it.
 
 The UI is a single static page with light and dark mode. It does not show pod logs.
 
+**Installable app (PWA)**
+- Can be installed to the desktop, dock or home screen and runs in its own window
+  (Chromium-based browsers show an **Install** button in the header; on iOS use *Share → Add to Home Screen*)
+- Works offline with the last loaded data: if the server can't be reached, the last successful response
+  is shown with a "showing cached data from …" banner, and the view reloads when the connection returns
+- Always online-first: fresh data and new deployments are used whenever the server is reachable
+
+Installation requires **HTTPS** (browsers only allow service workers on secure origins, except `localhost`),
+so give the app's Ingress a TLS certificate. Note: if an auth proxy session expires, API calls fail the same way
+as being offline, so the cached view is shown until you reload and log in again.
+
 ## Security model
 
 - **Read-only.** The ClusterRole in [`deploy/rbac.yaml`](deploy/rbac.yaml) grants only `get` and `list` on
@@ -74,10 +85,14 @@ The frontend is plain HTML/CSS/JS in a single file with no build step.
 ```
 app/main.py              Backend: Kubernetes queries, health logic, JSON API, static file serving
 app/static/index.html    Frontend: list view, detail view, hash routing (#/, #/ingress/<ns>/<name>)
+app/static/sw.js         Service worker (offline cache), served at /sw.js
+app/static/manifest.webmanifest, app/static/icons/   PWA manifest and icons
 tests/test_api.py        Backend tests against a mocked Kubernetes API (pytest)
-tests/ui/*.test.js       Frontend behaviour tests in jsdom
+tests/ui/*.test.js       Frontend behaviour tests in jsdom, plus service worker tests
 deploy/                  Kubernetes manifests (kustomize)
 scripts/dev.sh           Build / test / run helper (runs everything in Docker)
+scripts/make_icons.py    Regenerates the PWA icons from an inline SVG
+scripts/release.sh       Creates and pushes a vX.Y.Z release tag
 ```
 
 ### Helper script
@@ -119,6 +134,7 @@ pytest -q
 | `GET /api/ingresses/{namespace}/{name}` | Ingress detail with health, backend services, pods and events |
 | `GET /api/ingresses/{namespace}/{name}/yaml` | Ingress manifest as YAML |
 | `GET /healthz` | Liveness / readiness probe |
+| `GET /manifest.webmanifest`, `GET /sw.js` | PWA manifest and service worker |
 
 The list endpoint uses two cluster-wide calls (services and EndpointSlices) to compute every ingress's
 health, so the number of API calls doesn't grow with the number of Ingresses.

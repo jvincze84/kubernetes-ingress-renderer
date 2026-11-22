@@ -5,7 +5,7 @@ const mk = (namespace, name, status) => ({ namespace, name, ingressClass: "nginx
 const items = [mk("kube-system", "dash", "UP"), mk("payments-prod", "pay", "DOWN"), mk("payments-dev", "pay", "UP"), mk("monitoring", "grafana", "UP")];
 const dom = new JSDOM(html, { runScripts: "dangerously", url: "http://x/#/", pretendToBeVisual: true,
   beforeParse(w) {
-    w.fetch = async () => ({ ok: true, json: async () => ({ items }) });
+    w.fetch = async () => ({ ok: true, headers: { get: () => null }, json: async () => ({ items }) });
     w.Element.prototype.scrollIntoView = () => {};
   } });
 const w = dom.window, d = w.document;
